@@ -87,4 +87,4 @@ Stalcraft Server Blocker — это приложение на Python, предн
 - Использованы библиотеки **PyQt6**, **pydivert** и **ping3**.
 
 
-[![Uploading Screenshot_81.png…]()](https://imgur.com/a/ODWz7Cd)
+https://imgur.com/a/ODWz7Cd
