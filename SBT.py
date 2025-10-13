@@ -4,15 +4,14 @@ import sys
 import ctypes
 import threading
 import time
+import socket
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QTreeWidget, QTreeWidgetItem, QAbstractItemView,
-    QMessageBox, QFrame, QSizePolicy, QTextEdit
+    QMessageBox, QFrame, QSizePolicy, QTextEdit, QDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 import pydivert
-from ping3 import ping
-
 
 try:
     ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
@@ -36,19 +35,80 @@ class ServerBlocker(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Stalcraft Server Blocker")
-        self.setFixedSize(800, 600)
         self.base_path = get_base_path()
         self.servers_file = os.path.join(self.base_path, "Servers.json")
-        self.selected_file = os.path.join(self.base_path, "selected_servers.json")
+        self.settings_file = os.path.join(self.base_path, "Settings.json")
+        self.trans = {
+            "en": {
+                "window_title": "Stalcraft Server Blocker",
+                "error": "Error",
+                "file_not_found": "Servers.json not found in {}",
+                "block": "▶ Block Servers",
+                "unblock": "■ Unblock Servers",
+                "check_ping": "Check Server Ping",
+                "selected_servers": "Selected: {} servers",
+                "blocking_active": "Blocking is active",
+                "run_as_admin": "Run the program as administrator!",
+                "select_server_block": "Select at least one server to block.",
+                "info": "Information",
+                "blocking_failed": "Failed to start blocking: {}",
+                "select_server_ping": "Select at least one server to check ping.",
+                "checking_ping": "Checking ping...",
+                "ping_results_header": "Ping check results:<br><br>",
+                "server": "Server {}:<br>",
+                "avg_ping": "  Average ping: ",
+                "min_ping": "  Minimum ping: ",
+                "max_ping": "  Maximum ping: ",
+                "loss": "  Packet loss: ",
+                "ms": " ms",
+                "percent": "{:.2f}%",
+                "na": "N/A",
+                "usage": "To check ping, select desired servers and click '<span style='color:#ffffff; font-weight:bold; background-color:#00CED1; padding:2px 4px; border-radius:3px;'>Check Server Ping</span>'.\nIf you <span style='color:#ffffff; font-weight:bold; background-color:#9932CC; padding:2px 4px; border-radius:3px;'>block</span> selected servers, the game will not connect to them.",
+                "choose_language": "Please choose your preferred language:"
+            },
+            "ru": {
+                "window_title": "Stalcraft Server Blocker",
+                "error": "Ошибка",
+                "file_not_found": "Файл Servers.json не найден в {}",
+                "block": "▶ Заблокировать",
+                "unblock": "■ Разблокировать",
+                "check_ping": "Проверить пинг",
+                "selected_servers": "Выбрано: {} серверов",
+                "blocking_active": "Блокировка активна",
+                "run_as_admin": "Запустите программу от имени администратора!",
+                "select_server_block": "Выберите хотя бы один сервер для блокировки.",
+                "info": "Информация",
+                "blocking_failed": "Не удалось запустить блокировку: {}",
+                "select_server_ping": "Выберите хотя бы один сервер для проверки пинга.",
+                "checking_ping": "Проверка пинга...",
+                "ping_results_header": "Результаты проверки пинга:<br><br>",
+                "server": "Сервер {}:<br>",
+                "avg_ping": "  Средний пинг: ",
+                "min_ping": "  Минимальный пинг: ",
+                "max_ping": "  Максимальный пинг: ",
+                "loss": "  Потери: ",
+                "ms": " мс",
+                "percent": "{:.2f}%",
+                "na": "N/A",
+                "usage": "Чтобы проверить пинг, выберите нужные сервера и нажмите '<span style='color:#ffffff; font-weight:bold; background-color:#00CED1; padding:2px 4px; border-radius:3px;'>Проверить пинг</span>'.\nЕсли <span style='color:#ffffff; font-weight:bold; background-color:#9932CC; padding:2px 4px; border-radius:3px;'>заблокировать</span> выбранные сервера, игра не сможет к ним подключиться.",
+                "choose_language": "Пожалуйста, выберите предпочитаемый язык:"
+            }
+        }
+        self.selected = self.load_selected()
+        self.current_region = self.load_region()
+        self.language = self.load_language()
+        if self.language is None:
+            self.language = self.ask_language()
+            self.save_settings()
+        self.setWindowTitle(self.trans[self.language]["window_title"])
+        self.setFixedSize(800, 600)
         try:
             with open(self.servers_file, "r", encoding="utf-8") as f:
                 self.data = json.load(f)
         except FileNotFoundError:
-            QMessageBox.critical(self, "Ошибка", f"Файл Servers.json не найден в {self.base_path}")
+            QMessageBox.critical(self, self.trans[self.language]["error"], self.trans[self.language]["file_not_found"].format(self.base_path))
             sys.exit(1)
 
-        self.selected = self.load_selected()
         self.stop_flag = False
         self.blocking_thread = None
         self.selected_ips = set()
@@ -56,9 +116,80 @@ class ServerBlocker(QMainWindow):
         self.divert = None
         self.address_to_name = {}
         self.build_address_name_map()
-
         self.initUI()
         self.update_ping_results.connect(self.display_ping_results)
+
+    def load_language(self):
+        if os.path.exists(self.settings_file):
+            try:
+                with open(self.settings_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data.get("language", "ru")
+            except:
+                return "ru"
+        return None
+
+    def save_settings(self):
+        settings = {
+            "language": self.language,
+            "region": self.current_region,
+            "selected_servers": self.selected
+        }
+        with open(self.settings_file, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=2, ensure_ascii=False)
+
+    def ask_language(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Choose Language / Выберите Язык")
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #000000;
+                color: #ffffff;
+            }
+            QLabel {
+                font-size: 14px;
+                color: #e0e0e0;
+                font-family: 'Arial';
+                padding: 10px;
+            }
+            QPushButton {
+                background-color: #9932CC;
+                color: #ffffff;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 10px;
+                border-radius: 6px;
+                border: 2px solid #FF00FF;
+                font-family: 'Arial';
+            }
+            QPushButton:hover {
+                background-color: #8B008B;
+            }
+            QPushButton:pressed {
+                background-color: #7B2CBF;
+            }
+        """)
+        layout = QVBoxLayout()
+        label = QLabel(self.trans["ru"]["choose_language"] + "\n" + self.trans["en"]["choose_language"])
+        layout.addWidget(label)
+        hbox = QHBoxLayout()
+        btn_en = QPushButton("English")
+        btn_ru = QPushButton("Русский")
+        self.language_choice = "ru"
+        def set_en():
+            self.language_choice = "en"
+            dialog.accept()
+        def set_ru():
+            self.language_choice = "ru"
+            dialog.accept()
+        btn_en.clicked.connect(set_en)
+        btn_ru.clicked.connect(set_ru)
+        hbox.addWidget(btn_en)
+        hbox.addWidget(btn_ru)
+        layout.addLayout(hbox)
+        dialog.setLayout(layout)
+        dialog.exec()
+        return self.language_choice
 
     def build_address_name_map(self):
         def traverse_pools(pools):
@@ -70,17 +201,30 @@ class ServerBlocker(QMainWindow):
         traverse_pools(self.data["pools"])
 
     def load_selected(self):
-        if os.path.exists(self.selected_file):
+        if os.path.exists(self.settings_file):
             try:
-                with open(self.selected_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                with open(self.settings_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data.get("selected_servers", [])
             except:
                 return []
         return []
 
+    def load_region(self):
+        if os.path.exists(self.settings_file):
+            try:
+                with open(self.settings_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data.get("region", "RU")
+            except:
+                return "RU"
+        return "RU"
+
+    def save_region(self):
+        self.save_settings()
+
     def save_selected(self):
-        with open(self.selected_file, "w", encoding="utf-8") as f:
-            json.dump(self.selected, f, indent=2, ensure_ascii=False)
+        self.save_settings()
 
     def initUI(self):
         self.setStyleSheet("""
@@ -92,10 +236,44 @@ class ServerBlocker(QMainWindow):
 
         central = QWidget()
         self.setCentralWidget(central)
-        main_layout = QHBoxLayout(central)
+        main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
-
+        region_layout = QHBoxLayout()
+        region_layout.setSpacing(5)
+        regions = ["EU", "NA", "RU", "SEA"]
+        self.region_buttons = {}
+        for region in regions:
+            btn = QPushButton(region)
+            btn.clicked.connect(lambda checked, r=region: self.set_region(r))
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #9932CC;
+                    color: #ffffff;
+                    font-weight: bold;
+                    font-size: 12px;
+                    padding: 5px 10px;
+                    border-radius: 4px;
+                    border: 1px solid #FF00FF;
+                    font-family: 'Arial';
+                }
+                QPushButton:hover {
+                    background-color: #8B008B;
+                }
+                QPushButton:pressed {
+                    background-color: #7B2CBF;
+                }
+                QPushButton:checked {
+                    background-color: #FF00FF;
+                    color: #000000;
+                }
+            """)
+            btn.setCheckable(True)
+            if region == self.current_region:
+                btn.setChecked(True)
+            region_layout.addWidget(btn)
+            self.region_buttons[region] = btn
+        main_layout.addLayout(region_layout)
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
@@ -170,13 +348,15 @@ class ServerBlocker(QMainWindow):
                 border: none;
             }
         """)
-        main_layout.addWidget(self.tree, 2)
 
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(10)
+        content_layout.addWidget(self.tree, 2)
         right_panel = QVBoxLayout()
         right_panel.setAlignment(Qt.AlignmentFlag.AlignTop)
         right_panel.setSpacing(10)
-        main_layout.addLayout(right_panel, 1)
-
+        content_layout.addLayout(right_panel, 1)
+        main_layout.addLayout(content_layout)
         title = QLabel("SBT")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("""
@@ -187,7 +367,6 @@ class ServerBlocker(QMainWindow):
             font-family: 'Arial';
         """)
         right_panel.addWidget(title)
-
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
         line.setFrameShadow(QFrame.Shadow.Sunken)
@@ -197,11 +376,9 @@ class ServerBlocker(QMainWindow):
             margin: 10px 0;
         """)
         right_panel.addWidget(line)
-
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(5)
-
-        self.start_btn = QPushButton("▶ Заблокировать")
+        self.start_btn = QPushButton(self.trans[self.language]["block"])
         self.start_btn.clicked.connect(self.start_blocking)
         self.start_btn.setStyleSheet("""
             QPushButton {
@@ -227,8 +404,7 @@ class ServerBlocker(QMainWindow):
             }
         """)
         buttons_layout.addWidget(self.start_btn)
-
-        self.stop_btn = QPushButton("■ Разблокировать")
+        self.stop_btn = QPushButton(self.trans[self.language]["unblock"])
         self.stop_btn.clicked.connect(self.stop_blocking)
         self.stop_btn.setEnabled(False)
         self.stop_btn.setStyleSheet("""
@@ -255,8 +431,7 @@ class ServerBlocker(QMainWindow):
             }
         """)
         buttons_layout.addWidget(self.stop_btn)
-
-        self.ping_btn = QPushButton("Проверить пинг")
+        self.ping_btn = QPushButton(self.trans[self.language]["check_ping"])
         self.ping_btn.clicked.connect(self.check_ping)
         self.ping_btn.setStyleSheet("""
             QPushButton {
@@ -282,9 +457,7 @@ class ServerBlocker(QMainWindow):
             }
         """)
         buttons_layout.addWidget(self.ping_btn)
-
         right_panel.addLayout(buttons_layout)
-
         line2 = QFrame()
         line2.setFrameShape(QFrame.Shape.HLine)
         line2.setFrameShadow(QFrame.Shadow.Sunken)
@@ -294,8 +467,7 @@ class ServerBlocker(QMainWindow):
             margin: 10px 0;
         """)
         right_panel.addWidget(line2)
-
-        self.status_label = QLabel(f"Выбрано: {len(self.selected)} серверов")
+        self.status_label = QLabel(self.trans[self.language]["selected_servers"].format(len(self.selected)))
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setStyleSheet("""
             font-size: 14px;
@@ -307,10 +479,9 @@ class ServerBlocker(QMainWindow):
             font-family: 'Arial';
         """)
         right_panel.addWidget(self.status_label)
-
         self.ping_results = QTextEdit()
         self.ping_results.setReadOnly(True)
-        self.ping_results.setFixedHeight(150)
+        self.ping_results.setFixedHeight(250)
         self.ping_results.setStyleSheet("""
             QTextEdit {
                 background-color: #0a0a0a;
@@ -323,8 +494,7 @@ class ServerBlocker(QMainWindow):
             }
         """)
         right_panel.addWidget(self.ping_results)
-
-        usage_label = QLabel("Чтобы проверить пинг, выделите нужные сервера и нажмите '<span style='color:#ffffff; font-weight:bold; background-color:#00CED1; padding:2px 4px; border-radius:3px;'>Проверить пинг</span>'.\nЕсли <span style='color:#ffffff; font-weight:bold; background-color:#9932CC; padding:2px 4px; border-radius:3px;'>заблокировать</span> выделенные сервера, игра не сможет подключиться к ним.")
+        usage_label = QLabel(self.trans[self.language]["usage"])
         usage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         usage_label.setWordWrap(True)
         usage_label.setStyleSheet("""
@@ -335,9 +505,7 @@ class ServerBlocker(QMainWindow):
             font-family: 'Arial';
         """)
         right_panel.addWidget(usage_label)
-
         right_panel.addStretch(1)
-
         credit_label = QLabel("by YungDaggerStab & WeedSellerBand")
         credit_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         credit_label.setStyleSheet("""
@@ -346,42 +514,45 @@ class ServerBlocker(QMainWindow):
             font-family: 'Arial';
         """)
         right_panel.addWidget(credit_label)
-
         self.initializing = True
         self.populate_tree()
         self.initializing = False
-
         self.tree.itemChanged.connect(self.on_item_changed)
+
+    def set_region(self, region):
+        for r, btn in self.region_buttons.items():
+            btn.setChecked(r == region)
+        self.current_region = region
+        self.save_region()
+        self.populate_tree()
 
     def populate_tree(self):
         self.tree.clear()
-
         def add_items(parent, data):
             for entry in data:
-                item = QTreeWidgetItem(parent, [entry["name"]])
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 if "address" in entry:
+                    item = QTreeWidgetItem(parent, [entry["name"]])
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                     item.setData(0, Qt.ItemDataRole.UserRole, {"type": "server", "address": entry["address"]})
                     item.setCheckState(0, Qt.CheckState.Checked if entry["address"] in self.selected else Qt.CheckState.Unchecked)
                 else:
-                    item.setData(0, Qt.ItemDataRole.UserRole, {"type": "pool", "name": entry["name"]})
-                    item.setCheckState(0, Qt.CheckState.Unchecked)
-                    if "tunnels" in entry and entry["tunnels"]:
-                        add_items(item, entry["tunnels"])
-
+                    if entry.get("region") == self.current_region:
+                        item = QTreeWidgetItem(parent, [entry["name"]])
+                        item.setData(0, Qt.ItemDataRole.UserRole, {"type": "pool", "name": entry["name"]})
+                        item.setCheckState(0, Qt.CheckState.Unchecked)
+                        if "tunnels" in entry and entry["tunnels"]:
+                            add_items(item, entry["tunnels"])
         add_items(self.tree.invisibleRootItem(), self.data["pools"])
         self.tree.expandAll()
+        self.status_label.setText(self.trans[self.language]["selected_servers"].format(len(self.selected)))
 
     def on_item_changed(self, item, column):
         if self.initializing:
             return
-
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data:
             return
-
         self.tree.blockSignals(True)
-
         if data["type"] == "pool":
             self.set_children_check_state(item, item.checkState(0))
         elif data["type"] == "server":
@@ -392,13 +563,10 @@ class ServerBlocker(QMainWindow):
             else:
                 if address in self.selected:
                     self.selected.remove(address)
-
         self.update_parent_check_state(item)
         self.save_selected()
-        self.status_label.setText(f"Выбрано: {len(self.selected)} серверов")
-
+        self.status_label.setText(self.trans[self.language]["selected_servers"].format(len(self.selected)))
         self.tree.blockSignals(False)
-
         if not self.stop_flag and self.blocking_thread and self.blocking_thread.is_alive():
             self.update_selected_ips()
         elif not self.selected:
@@ -437,21 +605,19 @@ class ServerBlocker(QMainWindow):
 
     def start_blocking(self):
         if not is_admin():
-            QMessageBox.warning(self, "Ошибка", "Запусти программу от имени администратора!")
+            QMessageBox.warning(self, self.trans[self.language]["error"], self.trans[self.language]["run_as_admin"])
             return
         if not self.selected:
-            QMessageBox.information(self, "Инфо", "Выбери хотя бы один сервер для блокировки.")
+            QMessageBox.information(self, self.trans[self.language]["info"], self.trans[self.language]["select_server_block"])
             return
-
         self.update_selected_ips()
         self.stop_flag = False
         self.blocking_thread = threading.Thread(target=self.block_packets, daemon=True)
         self.blocking_thread.start()
-
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.ping_btn.setEnabled(False)
-        self.status_label.setText("Блокировка активна")
+        self.status_label.setText(self.trans[self.language]["blocking_active"])
 
     def stop_blocking(self):
         self.stop_flag = True
@@ -466,7 +632,7 @@ class ServerBlocker(QMainWindow):
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.ping_btn.setEnabled(True)
-        self.status_label.setText(f"Выбрано: {len(self.selected)} серверов")
+        self.status_label.setText(self.trans[self.language]["selected_servers"].format(len(self.selected)))
 
     def block_packets(self):
         filter_str = "ip and (tcp.DstPort >= 29450 and tcp.DstPort <= 29460 or tcp.SrcPort >= 29450 and tcp.SrcPort <= 29460 or udp.DstPort >= 29450 and udp.DstPort <= 29460 or udp.SrcPort >= 29450 and udp.SrcPort <= 29460)"
@@ -503,18 +669,18 @@ class ServerBlocker(QMainWindow):
                     time.sleep(0.1)
                     continue
         except Exception as e:
-            QMessageBox.critical(self, "Ошибка", f"Не удалось запустить блокировку: {e}")
+            QMessageBox.critical(self, self.trans[self.language]["error"], self.trans[self.language]["blocking_failed"].format(e))
         finally:
             if self.divert:
                 self.divert.close()
 
     def check_ping(self):
         if not self.selected:
-            QMessageBox.information(self, "Инфо", "Выбери хотя бы один сервер для проверки пинга.")
+            QMessageBox.information(self, self.trans[self.language]["info"], self.trans[self.language]["select_server_ping"])
             return
 
         self.ping_btn.setEnabled(False)
-        self.ping_results.setText("Проверка пинга...\n")
+        self.ping_results.setHtml(f"<html><body>{self.trans[self.language]['checking_ping']}<br></body></html>")
         threading.Thread(target=self.run_ping_check, daemon=True).start()
 
     def run_ping_check(self):
@@ -522,41 +688,62 @@ class ServerBlocker(QMainWindow):
         total_pings = 20
         ping_delay = 0.1
         for addr in self.selected:
-            ip = addr.split(":")[0]
+            ip, port_str = addr.split(":")
+            port = int(port_str)
             pings = []
             loss_count = 0
             for _ in range(total_pings):
                 try:
-                    response_time = ping(ip, timeout=3)
-                    if response_time is not None:
-                        pings.append(response_time * 1000)
+                    start_time = time.time()
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(3)
+                    result = sock.connect_ex((ip, port))
+                    end_time = time.time()
+                    sock.close()
+                    if result == 0:
+                        response_time = (end_time - start_time) * 1000
+                        pings.append(response_time)
                     else:
                         loss_count += 1
                 except (OSError, Exception):
                     loss_count += 1
                 time.sleep(ping_delay)
             loss_percentage = (loss_count / total_pings) * 100
-            avg_ping = sum(pings) / len(pings) if pings else "N/A"
-            min_ping = min(pings) if pings else "N/A"
-            max_ping = max(pings) if pings else "N/A"
+            avg_ping = sum(pings) / len(pings) if pings else float('inf')
+            min_ping = min(pings) if pings else float('inf')
+            max_ping = max(pings) if pings else float('inf')
             server_name = self.address_to_name.get(addr, addr)
             results.append((server_name, avg_ping, min_ping, max_ping, loss_percentage))
-
+        results.sort(key=lambda x: x[1])
         self.update_ping_results.emit(results)
 
+    def get_ping_color(self, ping):
+        if ping == float('inf'):
+            return "#888888"
+        if ping <= 30:
+            return "#00FF00"
+        elif ping >= 100:
+            return "#FF0000"
+        else:
+            ratio = (ping - 30) / (100 - 30)
+            r = int(255 * ratio)
+            g = int(255 * (1 - ratio))
+            return f"#{r:02x}{g:02x}00"
+
     def display_ping_results(self, results):
-        text = "Результаты проверки пинга:\n\n"
+        text = "<html><body>" + self.trans[self.language]["ping_results_header"]
         for server_name, avg_ping, min_ping, max_ping, loss in results:
-            ping_str = f"{avg_ping:.2f} мс" if avg_ping != "N/A" else "N/A"
-            min_ping_str = f"{min_ping:.2f} мс" if min_ping != "N/A" else "N/A"
-            max_ping_str = f"{max_ping:.2f} мс" if max_ping != "N/A" else "N/A"
-            text += f"Сервер {server_name}:\n"
-            text += f"  Средний пинг: {ping_str}\n"
-            text += f"  Минимальный пинг: {min_ping_str}\n"
-            text += f"  Максимальный пинг: {max_ping_str}\n"
-            text += f"  Потери: {loss:.2f}%\n\n"
-        
-        self.ping_results.setText(text)
+            color = self.get_ping_color(avg_ping)
+            ping_str = f"{avg_ping:.2f}{self.trans[self.language]['ms']}" if avg_ping != float('inf') else self.trans[self.language]["na"]
+            min_ping_str = f"{min_ping:.2f}{self.trans[self.language]['ms']}" if min_ping != float('inf') else self.trans[self.language]["na"]
+            max_ping_str = f"{max_ping:.2f}{self.trans[self.language]['ms']}" if max_ping != float('inf') else self.trans[self.language]["na"]
+            text += self.trans[self.language]["server"].format(server_name)
+            text += self.trans[self.language]["avg_ping"] + f"<span style='color:{color};'>{ping_str}</span><br>"
+            text += self.trans[self.language]["min_ping"] + f"{min_ping_str}<br>"
+            text += self.trans[self.language]["max_ping"] + f"{max_ping_str}<br>"
+            text += self.trans[self.language]["loss"] + self.trans[self.language]["percent"].format(loss) + "<br><br>"
+        text += "</body></html>"
+        self.ping_results.setHtml(text)
         self.ping_btn.setEnabled(True)
 
 if __name__ == "__main__":
