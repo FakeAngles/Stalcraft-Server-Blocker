@@ -2,7 +2,90 @@
   "mode": "roxy",
   "pools": [
     {
+      "name": "GAME-EU",
+      "region": "EU",
+      "tunnels": [
+        {
+          "name": "GAME-EU-2",
+          "address": "79.127.241.67:29450"
+        },
+        {
+          "name": "GAME-EU-3",
+          "address": "79.127.241.68:29450"
+        },
+        {
+          "name": "GAME-EU-4",
+          "address": "79.127.241.69:29450"
+        },
+        {
+          "name": "GAME-EU-5XS",
+          "address": "89.222.124.35:29450"
+        },
+        {
+          "name": "GAME-EU-6XS",
+          "address": "89.222.124.36:29450"
+        }
+      ]
+    },
+    {
+      "name": "WAW",
+      "region": "EU",
+      "tunnels": [
+        {
+          "name": "WAW-ROXY3",
+          "address": "57.128.202.23:29450"
+        },
+        {
+          "name": "WAW-ROXY4",
+          "address": "146.59.110.238:29450"
+        },
+        {
+          "name": "WAW-ROXY5",
+          "address": "146.59.111.52:29450"
+        }
+      ]
+    },
+    {
+      "name": "GAME-NA",
+      "region": "NA",
+      "tunnels": [
+        {
+          "name": "GAME-NA-3",
+          "address": "89.187.175.135:29450"
+        },
+        {
+          "name": "GAME-NA-4",
+          "address": "89.187.175.102:29450"
+        },
+        {
+          "name": "GAME-NA-5",
+          "address": "89.187.175.65:29450"
+        }
+      ]
+    },
+    {
+      "name": "NYC",
+      "region": "NA",
+      "tunnels": [
+        {
+          "name": "NYC-ROXY1",
+          "address": "89.187.179.170:29450"
+        }
+      ]
+    },
+    {
+      "name": "LAX",
+      "region": "NA",
+      "tunnels": [
+        {
+          "name": "LAX-ROXY1",
+          "address": "89.187.185.94:29450"
+        }
+      ]
+    },
+    {
       "name": "CLOUD-RU-7",
+      "region": "RU",
       "tunnels": [
         {
           "name": "SRVMGR-ACCESSOR-OFT-RU-7A",
@@ -12,6 +95,7 @@
     },
     {
       "name": "MSK2",
+      "region": "RU",
       "tunnels": [
         {
           "name": "MSK2-1",
@@ -81,6 +165,7 @@
     },
     {
       "name": "MSK2X",
+      "region": "RU",
       "tunnels": [
         {
           "name": "MSK2-ROXY1",
@@ -122,6 +207,7 @@
     },
     {
       "name": "TAS",
+      "region": "RU",
       "tunnels": [
         {
           "name": "TAS1-ROXY1",
@@ -131,6 +217,7 @@
     },
     {
       "name": "EKB",
+      "region": "RU",
       "tunnels": [
         {
           "name": "EKB-ROXY7",
@@ -160,6 +247,7 @@
     },
     {
       "name": "SMR",
+      "region": "RU",
       "tunnels": [
         {
           "name": "SMR-ROXY16",
@@ -181,6 +269,7 @@
     },
     {
       "name": "RST",
+      "region": "RU",
       "tunnels": [
         {
           "name": "RST-ROXY1",
@@ -194,6 +283,7 @@
     },
     {
       "name": "NSK",
+      "region": "RU",
       "tunnels": [
         {
           "name": "NSK-ROXY1",
@@ -203,6 +293,7 @@
     },
     {
       "name": "KRY",
+      "region": "RU",
       "tunnels": [
         {
           "name": "KRY-ROXY5",
@@ -216,6 +307,7 @@
     },
     {
       "name": "KHB",
+      "region": "RU",
       "tunnels": [
         {
           "name": "KHB-ROXY2",
@@ -229,6 +321,7 @@
     },
     {
       "name": "ALM",
+      "region": "RU",
       "tunnels": [
         {
           "name": "ALM-ROXY1",
@@ -238,6 +331,7 @@
     },
     {
       "name": "AST",
+      "region": "RU",
       "tunnels": [
         {
           "name": "AST-ROXY1",
@@ -251,6 +345,7 @@
     },
     {
       "name": "RIG",
+      "region": "RU",
       "tunnels": [
         {
           "name": "RIG-ROXY2",
@@ -260,6 +355,7 @@
     },
     {
       "name": "VIL",
+      "region": "RU",
       "tunnels": [
         {
           "name": "VIL-ROXY5",
@@ -281,6 +377,7 @@
     },
     {
       "name": "WAW",
+      "region": "RU",
       "tunnels": [
         {
           "name": "WAW2-ROXY1",
@@ -294,6 +391,7 @@
     },
     {
       "name": "MNK",
+      "region": "RU",
       "tunnels": [
         {
           "name": "MNK-ROXY1",
@@ -306,6 +404,30 @@
         {
           "name": "MNK-ROXY3",
           "address": "134.17.14.33:29450"
+        }
+      ]
+    },
+    {
+      "name": "GAME-SEA",
+      "region": "SEA",
+      "tunnels": [
+        {
+          "name": "GAME-SEA-2",
+          "address": "169.150.243.166:29450"
+        },
+        {
+          "name": "GAME-SEA-3",
+          "address": "79.127.213.146:29450"
+        }
+      ]
+    },
+    {
+      "name": "SYD",
+      "region": "SEA",
+      "tunnels": [
+        {
+          "name": "SYD-ROXY1",
+          "address": "143.244.63.114:29450"
         }
       ]
     }
