@@ -62,7 +62,7 @@
 
 4. **Запустите приложение**:
    ```bash
-   python server_blocker.py
+   python SBT.py
    ```
    **Или скачайте готовый исполняемый файл из [Release](https://github.com/FakeAngles/Stalcraft-Server-Blocker/releases)   и запустите его напрямую**
 
