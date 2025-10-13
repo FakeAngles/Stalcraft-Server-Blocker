@@ -64,7 +64,7 @@
    ```bash
    python server_blocker.py
    ```
-   **Или скачайте готовый исполняемый файл из [Release](https://github.com/FakeAngles/Stalcraft-Server-Blocker/releases))   и запустите его напрямую**
+   **Или скачайте готовый исполняемый файл из [Release](https://github.com/FakeAngles/Stalcraft-Server-Blocker/releases)   и запустите его напрямую**
 
 ---
 
