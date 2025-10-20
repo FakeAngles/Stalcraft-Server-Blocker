@@ -569,9 +569,8 @@ class ServerBlocker(QMainWindow):
         self.save_selected()
         self.status_label.setText(self.trans[self.language]["selected_servers"].format(len(self.selected)))
         self.tree.blockSignals(False)
-        if not self.stop_flag and self.blocking_thread and self.blocking_thread.is_alive():
-            self.update_selected_ips()
-        elif not self.selected:
+        self.update_selected_ips()
+        if not self.selected and not self.stop_flag and self.blocking_thread and self.blocking_thread.is_alive():
             self.stop_blocking()
 
     def set_children_check_state(self, item, state):
@@ -637,46 +636,36 @@ class ServerBlocker(QMainWindow):
         self.status_label.setText(self.trans[self.language]["selected_servers"].format(len(self.selected)))
 
     def block_packets(self):
-        filter_str = "ip and (tcp.DstPort >= 29450 and tcp.DstPort <= 29460 or tcp.SrcPort >= 29450 and tcp.SrcPort <= 29460 or udp.DstPort >= 29450 and udp.DstPort <= 29460 or udp.SrcPort >= 29450 and udp.SrcPort <= 29460)"
-        try:
-            self.divert = pydivert.WinDivert(filter_str)
-            self.divert.open()
-            while not self.stop_flag:
+        current_selected = set()
+        while not self.stop_flag:
+            if self.selected_ips != current_selected:
+                if self.divert:
+                    self.divert.close()
+                    self.divert = None
+                current_selected = self.selected_ips.copy()
+                if not current_selected:
+                    break
+                ip_filters = " or ".join(f"ip.DstAddr == {ip}" for ip in current_selected)
+                filter_str = f"outbound and ({ip_filters}) and (tcp.DstPort >= 29450 and tcp.DstPort <= 29460 or udp.DstPort >= 29450 and udp.DstPort <= 29460)"
                 try:
-                    packets = self.divert.recv(num=500, timeout=0.01)
-                    for packet in packets:
-                        dst_ip = str(packet.ipv4.dst_addr)
-                        src_ip = str(packet.ipv4.src_addr)
-                        drop = False
-
-                        if packet.tcp:
-                            dst_port = packet.tcp.dst_port
-                            src_port = packet.tcp.src_port
-                            if (29450 <= dst_port <= 29460 or 29450 <= src_port <= 29460) and (
-                                dst_ip in self.selected_ips or src_ip in self.selected_ips
-                            ):
-                                drop = True
-                        elif packet.udp:
-                            dst_port = packet.udp.dst_port
-                            src_port = packet.udp.src_port
-                            if (29450 <= dst_port <= 29460 or 29450 <= src_port <= 29460) and (
-                                dst_ip in self.selected_ips or src_ip in self.selected_ips
-                            ):
-                                drop = True
-
-                        if not drop:
-                            self.divert.send(packet)
+                    self.divert = pydivert.WinDivert(filter_str)
+                    self.divert.open()
                 except Exception as e:
-                    if self.stop_flag:
-                        break
-                    time.sleep(0.1)
-                    continue
-                time.sleep(0.1) 
-        except Exception as e:
-            QMessageBox.critical(self, self.trans[self.language]["error"], self.trans[self.language]["blocking_failed"].format(e))
-        finally:
-            if self.divert:
-                self.divert.close()
+                    QMessageBox.critical(self, self.trans[self.language]["error"], self.trans[self.language]["blocking_failed"].format(e))
+                    break
+            try:
+                packets = self.divert.recv(num=500, timeout=0.01)
+                for packet in packets:
+                    pass
+            except Exception as e:
+                if self.stop_flag:
+                    break
+                time.sleep(0.1)
+                continue
+            time.sleep(0.01)
+        if self.divert:
+            self.divert.close()
+            self.divert = None
 
     def check_ping(self):
         if not self.selected:
