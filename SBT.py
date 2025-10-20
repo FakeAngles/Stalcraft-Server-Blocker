@@ -5,6 +5,8 @@ import ctypes
 import threading
 import time
 import socket
+import struct
+import select
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QTreeWidget, QTreeWidgetItem, QAbstractItemView,
@@ -641,33 +643,35 @@ class ServerBlocker(QMainWindow):
             self.divert.open()
             while not self.stop_flag:
                 try:
-                    packet = self.divert.recv()
-                    dst_ip = str(packet.ipv4.dst_addr)
-                    src_ip = str(packet.ipv4.src_addr)
-                    drop = False
+                    packets = self.divert.recv(num=500, timeout=0.01)
+                    for packet in packets:
+                        dst_ip = str(packet.ipv4.dst_addr)
+                        src_ip = str(packet.ipv4.src_addr)
+                        drop = False
 
-                    if packet.tcp:
-                        dst_port = packet.tcp.dst_port
-                        src_port = packet.tcp.src_port
-                        if (29450 <= dst_port <= 29460 or 29450 <= src_port <= 29460) and (
-                            dst_ip in self.selected_ips or src_ip in self.selected_ips
-                        ):
-                            drop = True
-                    elif packet.udp:
-                        dst_port = packet.udp.dst_port
-                        src_port = packet.udp.src_port
-                        if (29450 <= dst_port <= 29460 or 29450 <= src_port <= 29460) and (
-                            dst_ip in self.selected_ips or src_ip in self.selected_ips
-                        ):
-                            drop = True
+                        if packet.tcp:
+                            dst_port = packet.tcp.dst_port
+                            src_port = packet.tcp.src_port
+                            if (29450 <= dst_port <= 29460 or 29450 <= src_port <= 29460) and (
+                                dst_ip in self.selected_ips or src_ip in self.selected_ips
+                            ):
+                                drop = True
+                        elif packet.udp:
+                            dst_port = packet.udp.dst_port
+                            src_port = packet.udp.src_port
+                            if (29450 <= dst_port <= 29460 or 29450 <= src_port <= 29460) and (
+                                dst_ip in self.selected_ips or src_ip in self.selected_ips
+                            ):
+                                drop = True
 
-                    if not drop:
-                        self.divert.send(packet)
+                        if not drop:
+                            self.divert.send(packet)
                 except Exception as e:
                     if self.stop_flag:
                         break
                     time.sleep(0.1)
                     continue
+                time.sleep(0.1) 
         except Exception as e:
             QMessageBox.critical(self, self.trans[self.language]["error"], self.trans[self.language]["blocking_failed"].format(e))
         finally:
@@ -683,29 +687,55 @@ class ServerBlocker(QMainWindow):
         self.ping_results.setHtml(f"<html><body>{self.trans[self.language]['checking_ping']}<br></body></html>")
         threading.Thread(target=self.run_ping_check, daemon=True).start()
 
+    def calculate_checksum(self, data):
+        if len(data) % 2:
+            data += b'\x00'
+        words = struct.unpack('!%dH' % (len(data) // 2), data)
+        sum = 0
+        for word in words:
+            sum += word
+        sum = (sum >> 16) + (sum & 0xFFFF)
+        sum += sum >> 16
+        return ~sum & 0xFFFF
+
+    def ping(self, host, timeout=1):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+            sock.settimeout(timeout)
+            icmp_type = 8
+            icmp_code = 0
+            icmp_checksum = 0
+            icmp_id = os.getpid() & 0xFFFF
+            icmp_seq = 1
+            header = struct.pack('!BBHHH', icmp_type, icmp_code, icmp_checksum, icmp_id, icmp_seq)
+            data = b'ping'
+            checksum = self.calculate_checksum(header + data)
+            header = struct.pack('!BBHHH', icmp_type, icmp_code, checksum, icmp_id, icmp_seq)
+            packet = header + data
+            start_time = time.time()
+            sock.sendto(packet, (host, 0))
+            recv_packet, addr = sock.recvfrom(1024)
+            end_time = time.time()
+            sock.close()
+            return (end_time - start_time) * 1000
+        except socket.timeout:
+            return None
+        except Exception:
+            return None
+
     def run_ping_check(self):
         results = []
         total_pings = 20
         ping_delay = 0.1
         for addr in self.selected:
             ip, port_str = addr.split(":")
-            port = int(port_str)
             pings = []
             loss_count = 0
             for _ in range(total_pings):
-                try:
-                    start_time = time.time()
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.settimeout(3)
-                    result = sock.connect_ex((ip, port))
-                    end_time = time.time()
-                    sock.close()
-                    if result == 0:
-                        response_time = (end_time - start_time) * 1000
-                        pings.append(response_time)
-                    else:
-                        loss_count += 1
-                except (OSError, Exception):
+                response_time = self.ping(ip, timeout=1)
+                if response_time is not None:
+                    pings.append(response_time)
+                else:
                     loss_count += 1
                 time.sleep(ping_delay)
             loss_percentage = (loss_count / total_pings) * 100
