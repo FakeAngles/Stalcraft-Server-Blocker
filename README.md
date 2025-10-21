@@ -104,7 +104,7 @@
 - 💻 Discord: `aida64`
 
 ### **WeedSellerBand**
-- 💬 Telegram: [@ker9j](https://t.keker9j)
+- 💬 Telegram: [@ker9j](https://t.me/ker9j)
 - 💻 Discord: `.ker9`
 
 ### **Art3mLapa**
