@@ -28,6 +28,20 @@
       ]
     },
     {
+      "name": "MSK2X",
+      "region": "EU",
+      "tunnels": [
+        {
+          "name": "MSK2-ROXY9",
+          "address": "77.223.120.163:29450"
+        },
+        {
+          "name": "MSK2-ROXY10",
+          "address": "5.35.3.243:29450"
+        }
+      ]
+    },
+    {
       "name": "WAW",
       "region": "EU",
       "tunnels": [
