@@ -7,6 +7,9 @@ import time
 import socket
 import struct
 import select
+import shutil
+import tempfile
+import atexit
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QTreeWidget, QTreeWidgetItem, QAbstractItemView,
@@ -14,6 +17,17 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 import pydivert
+
+def cleanup_temp():
+    temp_dir = tempfile.gettempdir()
+    for item in os.listdir(temp_dir):
+        if item.startswith('_MEI') and os.path.isdir(os.path.join(temp_dir, item)):
+            try:
+                shutil.rmtree(os.path.join(temp_dir, item))
+            except:
+                pass
+
+atexit.register(cleanup_temp)
 
 try:
     ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
